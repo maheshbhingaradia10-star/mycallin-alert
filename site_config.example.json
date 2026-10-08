@@ -20,7 +20,9 @@
   "result_selector": "",
   "status_selector": "",
   "date_selector": "",
-  "date_format": "",
-  "yes_phrases": [],
+  "date_format": "%A, %B %d, %Y %I:%M%p MST",
+  "yes_phrases": [
+    "You are required to test today"
+  ],
   "no_phrases": []
 }

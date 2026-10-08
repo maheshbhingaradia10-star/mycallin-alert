@@ -23,6 +23,17 @@ class SafetyTests(unittest.TestCase):
             with self.subTest(text=text, day=day):
                 self.assertEqual(classify(text, day, cfg, date(2026, 10, 7)), expected)
 
+    def test_observed_result_format_and_old_photo(self):
+        cfg = {"date_format": "%A, %B %d, %Y %I:%M%p MST",
+               "yes_phrases": ["You are required to test today"], "no_phrases": []}
+        timestamp = "Monday, January 05, 2026 6:10AM MST"
+        self.assertEqual(classify("You are required to test today", timestamp, cfg,
+                                  date(2026, 1, 5)), "TEST REQUIRED TODAY")
+        self.assertEqual(classify("You are required to test today", timestamp, cfg,
+                                  date(2026, 1, 6)), UNKNOWN)
+        self.assertEqual(classify("You are not required to test today", timestamp, cfg,
+                                  date(2026, 1, 5)), UNKNOWN)
+
     def test_exactly_one_eligible_utc_candidate(self):
         # Ordinary dates and both U.S. daylight-saving transition dates.
         for day in ("2026-01-10", "2026-07-10", "2026-03-08", "2026-11-01"):

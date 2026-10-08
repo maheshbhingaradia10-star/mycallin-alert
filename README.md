@@ -77,10 +77,26 @@ creating the service. No paid resource is created merely by committing this file
 Manual alternative: New Cron Job, this repository's `main` branch, Docker,
 `./Dockerfile`, command `python render_runner.py`, schedule `5 10,11 * * *`.
 
+## Evidence from the historical result screenshot
+
+An older screenshot confirms the exact positive wording
+`You are required to test today` and a displayed timestamp shaped like
+`weekday, month DD, YYYY H:MMAM MST`. The example includes this exact phrase
+and timestamp format. An old result is never reused for another date. The
+negative wording and live DOM selectors remain unverified.
+
+The screenshot explicitly displays **MST**. The earlier proposed Central-Time
+schedule must therefore be reviewed: 05:05 Central during daylight time is
+03:05 MST, before the observed 05:00 opening time if that window also uses MST.
+Do not enable the current schedule until the program timezone and its seasonal
+behavior are confirmed. If it uses fixed MST year-round, schedule 05:05 in
+America/Phoenix (12:05 UTC): 07:05 Central in summer and 06:05 in winter.
+This is a conditional conversion, not a verified setting for the live program.
+
 ## Site verification still required
 
-The observed site notice allows check-in from 5 a.m. to 6 p.m., without stating
-a timezone. Confirm the program uses America/Chicago before enabling this
+The observed login notice allows check-in from 5 a.m. to 6 p.m. The historical
+result screenshot labels its timestamp MST; the login notice itself has no timezone. Confirm the program uses America/Chicago before enabling this
 proposed 5:05 a.m. schedule. The remaining login steps and result page have not
 yet been inspected. Never guess selectors or result phrases.
 
