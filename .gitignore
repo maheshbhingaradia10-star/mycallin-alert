@@ -1,0 +1,10 @@
+.env
+.env.*
+mycallin_config.json
+private_output/
+*.png
+*.jpg
+*.jpeg
+*.log
+__pycache__/
+.venv/

@@ -1,0 +1,19 @@
+{
+  "verified": false,
+  "timezone": "America/Chicago",
+  "login_steps": [
+    {"selector": "", "env": "MYCALLIN_PHONE"},
+    {"selector": "", "env": "MYCALLIN_LAST_NAME"},
+    {"selector": "", "env": "MYCALLIN_ID"}
+  ],
+  "submit_selector": "",
+  "continuation_selectors": [],
+  "result_selector": "",
+  "status_selector": "",
+  "date_selector": "",
+  "date_format": "",
+  "yes_phrases": [],
+  "no_phrases": [],
+  "template": "mycallin_daily",
+  "language": "en_US"
+}
