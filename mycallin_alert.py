@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MyCallIn website check and Meta WhatsApp sender. See README.md for setup.
+"""MyCallIn website check and email sender. See README.md for setup.
 Site configuration remains unverified; use render_runner.py on Render.
 """
 
@@ -8,6 +8,10 @@ import json
 import os
 import re
 import sys
+import smtplib
+import ssl
+from email.message import EmailMessage
+from email.utils import format_datetime, make_msgid
 import time
 from datetime import datetime
 from pathlib import Path
@@ -24,8 +28,7 @@ EXAMPLE = {
                     {"selector": "", "env": "MYCALLIN_FIELD_3"}],
     "submit_selector": "", "result_selector": "",
     "status_selector": "", "date_selector": "", "date_format": "",
-    "yes_phrases": [], "no_phrases": [],
-    "template": "mycallin_daily", "language": "en_US"
+    "yes_phrases": [], "no_phrases": []
 }
 UNKNOWN = "STATUS UNKNOWN - check MyCallIn manually"
 
@@ -103,38 +106,74 @@ def failure_image(path, now):
     img.save(path)
 
 
-def send(cfg, image_path, now, status):
-    import requests
-    version = env("WA_API_VERSION")
-    sender = env("WA_PHONE_NUMBER_ID")
-    recipient = env("WA_TO")
-    if not re.fullmatch(r"v\d+\.\d+", version) or not sender.isdigit():
-        raise ValueError("Invalid API version or sender ID")
-    if not re.fullmatch(r"[1-9]\d{7,14}", recipient):
-        raise ValueError("WA_TO must include country code, digits only")
+def email_settings():
+    """Require one explicit sender and recipient; reject address/header injection."""
+    sender, recipient = env("SMTP_USERNAME"), env("EMAIL_TO")
+    for address in (sender, recipient):
+        if not re.fullmatch(r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", address):
+            raise ValueError("Configure a single valid sender and recipient email address")
+    password = env("SMTP_PASSWORD").replace(" ", "")
+    # Gmail app passwords display as four groups of four characters.
+    if len(password) != 16 or not password.isascii() or not password.isalnum():
+        raise ValueError("SMTP_PASSWORD must be a 16-character Gmail app password")
+    return sender, recipient, password
+
+
+def build_email(image_path, now, status, sender, recipient, test=False):
+    if status not in ("TEST REQUIRED TODAY", "NO TEST TODAY", UNKNOWN):
+        raise ValueError("Unrecognized check status")
     if image_path.stat().st_size > 5_000_000:
-        raise ValueError("Image exceeds WhatsApp image size limit")
-    root = f"https://graph.facebook.com/{version}/{sender}"
-    headers = {"Authorization": "Bearer " + env("WA_ACCESS_TOKEN")}
-    with image_path.open("rb") as photo:
-        response = requests.post(root + "/media", headers=headers,
-                                 data={"messaging_product": "whatsapp", "type": "image/png"},
-                                 files={"file": ("daily-check.png", photo, "image/png")}, timeout=60)
-    if not response.ok:
-        raise RuntimeError("WhatsApp media upload failed, HTTP " + str(response.status_code))
-    media_id = response.json()["id"]
-    values = [now.strftime("%Y-%m-%d"), status, now.strftime("%H:%M %Z")]
-    payload = {"messaging_product": "whatsapp", "to": recipient, "type": "template",
-               "template": {"name": cfg["template"], "language": {"code": cfg["language"]},
-                            "components": [
-                                {"type": "header", "parameters": [
-                                    {"type": "image", "image": {"id": media_id}}]},
-                                {"type": "body", "parameters": [
-                                    {"type": "text", "text": v} for v in values]}]}}
-    response = requests.post(root + "/messages", headers=headers, json=payload, timeout=60)
-    if not response.ok:
-        raise RuntimeError("WhatsApp submission failed, HTTP " + str(response.status_code))
-    return response.json()["messages"][0]["id"]
+        raise ValueError("Screenshot exceeds attachment size limit")
+    msg = EmailMessage()
+    msg["From"], msg["To"] = sender, recipient
+    msg["Date"] = format_datetime(now)
+    msg["Message-ID"] = make_msgid()
+    day = now.strftime("%Y-%m-%d")
+    if test:
+        msg["Subject"] = "MyCallIn email setup test - no website check performed"
+        body = "Email setup test only. MyCallIn was NOT checked. The attachment is a setup-test image, not a website screenshot."
+    else:
+        msg["Subject"] = f"MyCallIn {day}: {status}"
+        body = f"Date: {day}\nStatus: {status}\nChecked at: {now.strftime('%H:%M %Z')}\n"
+        if status == UNKNOWN:
+            body += "\nToday's test requirement could not be confirmed. Check https://mycallin.com/ manually. The attachment may be a failure notice instead of a website screenshot."
+        else:
+            body += "\nThe MyCallIn result screenshot is attached. Follow the program's instructions shown in it."
+    msg.set_content(body)
+    msg.add_attachment(image_path.read_bytes(), maintype="image", subtype="png",
+                       filename="setup-test.png" if test else "mycallin-check.png")
+    return msg
+
+
+def send(cfg, image_path, now, status, test=False):
+    sender, recipient, password = email_settings()
+    msg = build_email(image_path, now, status, sender, recipient, test=test)
+    # TLS is mandatory; never log the password or message content.
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=60,
+                          context=ssl.create_default_context()) as smtp:
+        smtp.login(sender, password)
+        rejected = smtp.send_message(msg, from_addr=sender, to_addrs=[recipient])
+        if rejected:
+            raise RuntimeError("Email recipient rejected")
+    return str(msg["Message-ID"])
+
+
+def test_email():
+    """Send a clearly labelled setup email without accessing MyCallIn."""
+    from tempfile import TemporaryDirectory
+    from PIL import Image, ImageDraw
+    now = datetime.now(ZoneInfo("America/Chicago"))
+    email_settings()
+    with TemporaryDirectory() as folder:
+        path = Path(folder) / "setup-test.png"
+        img = Image.new("RGB", (1050, 210), "white")
+        draw = ImageDraw.Draw(img)
+        draw.text((25, 30), "MYCALLIN EMAIL SETUP TEST", fill="black")
+        draw.text((25, 70), "No website check performed. This is NOT a website screenshot.", fill="black")
+        img.save(path)
+        send({}, path, now, UNKNOWN, test=True)
+    print("SMTP accepted the setup email; confirm receipt in the inbox or spam folder.")
+    return 0
 
 
 def run(cfg, dry_run):
@@ -152,7 +191,7 @@ def run(cfg, dry_run):
     # Shared hosting logs must not contain the person's test status.
     print(now.isoformat(timespec="minutes"), "Website check finished.", flush=True)
     if dry_run:
-        print("Dry run: image saved locally; no WhatsApp message sent.")
+        print("Dry run: image saved locally; no email sent.")
         return 2 if status == UNKNOWN else 0
     previous = json.loads(state_path.read_text()) if state_path.exists() else {}
     key = now.date().isoformat() + ":" + status
@@ -163,7 +202,7 @@ def run(cfg, dry_run):
     temporary = state_path.with_suffix(".tmp")
     temporary.write_text(json.dumps({"key": key, "message_id": message_id}))
     temporary.replace(state_path)
-    print("WhatsApp API accepted the message; phone delivery is not yet verified.")
+    print("SMTP accepted the email; inbox delivery is not yet verified.")
     return 2 if status == UNKNOWN else 0
 
 

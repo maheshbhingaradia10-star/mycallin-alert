@@ -1,0 +1,21 @@
+services:
+  - type: cron
+    name: mycallin-alert
+    runtime: docker
+    plan: starter
+    region: ohio
+    branch: main
+    schedule: "5 10,11 * * *"
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: python render_runner.py
+    autoDeployTrigger: commit
+    envVars:
+      - key: ALERTS_ENABLED
+        value: "false"
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: EMAIL_TO
+        sync: false

@@ -1,132 +1,103 @@
-# MyCallIn daily alert
+# MyCallIn daily email alert
 
-Cloud deployment scaffold for a daily MyCallIn check, a result-card screenshot,
-and an explicit WhatsApp notification. **Not live or fully configured.**
-No credentials, phone numbers, names, IDs, tokens, or personal screenshots belong
-in this repository. Add real values only in Render's Environment settings.
+Checks MyCallIn, captures its result card, and emails a PNG attachment with
+`TEST REQUIRED TODAY`, `NO TEST TODAY`, or `STATUS UNKNOWN` in the subject.
+**Not live or fully configured.** The site adapter still needs verification.
+Personal credentials, email addresses, IDs, tokens, and screenshots must stay
+out of this public repository. Store real values in Render Environment settings.
 
-## Current state
+## Email sender setup
 
-- Status/date classification and daylight-saving schedule logic tested locally.
-- Login and result selectors are intentionally blank, not guessed.
-- MyCallIn's remaining steps and result wording have not been inspected.
-- Docker build, live site access, and WhatsApp delivery have not been tested.
-- Hosting and a Meta WhatsApp Business sender have not been activated.
+This version uses Gmail SMTP over verified TLS, replacing WhatsApp entirely.
+It needs no Meta account, WhatsApp sender, or message template.
 
-The observed site notice permits check-in from 5 a.m. to 6 p.m. It does not
-specify a timezone. This package proposes 5:05 a.m. America/Chicago; confirm that
-the program uses Central Time before enabling it. No result is inferred from a
-closed page, network failure, sign-in failure, or yesterday's date.
+1. Choose a Gmail account you own to send the alerts. It can also receive them.
+2. Enable Google 2-Step Verification, then create an app password named
+   `MyCallIn Alerts` at https://myaccount.google.com/apppasswords . Some account
+   policies do not permit app passwords; do not use your normal Gmail password.
+3. Enter the following privately in the Render deployment form or Environment:
+   - `SMTP_USERNAME`: full sending Gmail address.
+   - `SMTP_PASSWORD`: the 16-character app password (spaces are removed).
+   - `EMAIL_TO`: the single receiving email address.
+4. Run `python render_runner.py --test-email` in a manual Render shell to send
+   a clearly labelled test image. This deliberately works with alerts disabled
+   and does not open MyCallIn. Check both inbox and spam for receipt.
 
-## Upload and create the Render service
+SMTP acceptance does not guarantee delivery. Credentials can be revoked;
+changing your Google password also revokes app passwords. Do not paste passwords
+into chat, screenshots, logs, or GitHub. A Gmail connection inside ChatGPT does
+not by itself provide credentials to the unattended Python process on Render.
 
-1. Upload the extracted project files to the GitHub repository root. Upload the
-   files themselves, not the ZIP or a containing directory. Include dotfiles.
-2. In Render choose **New Cron Job > Git Provider**, select this repository and
-   branch `main`. Use the repository's **Docker** runtime and `./Dockerfile`.
-3. Name: `mycallin-alert`. Schedule: `5 10,11 * * *`. Docker Command:
-   `python render_runner.py` (also the image default). No separate build command.
-4. Set `ALERTS_ENABLED=false` initially. Review Render's displayed charges before
-   deploying. Render documents a $1 minimum monthly charge per cron service;
-   actual runtime and WhatsApp charges may add to that.
-5. A build with alerts disabled only verifies deployment. The log will say
-   `DISABLED`; it has NOT checked MyCallIn or sent WhatsApp.
+## Render deployment
 
-Render schedules use UTC. This schedule starts at both 10:05 and 11:05 UTC.
-The Python entrypoint only runs the website check during 05:05-05:20 Central,
-so the other invocation exits. This accommodates daylight saving without editing
-the cron expression. A delay beyond the window is skipped, not reported as a
-successful website check. Inspect Render Runs and maintain an independent
-reminder until execution and delivery monitoring are in place.
+The repository includes `render.yaml` for a Docker cron service. Start setup:
+https://dashboard.render.com/select-repo?type=blueprint
 
-## Environment variables
+Select this repository and review the Blueprint. The only initial private form
+fields are the sender address, app password, and destination address.
+`ALERTS_ENABLED=false` is the default. A disabled run performs no site check and
+sends no email. **Do not treat a successful build as a working daily alert.**
+Render cron services have a $1 monthly minimum; review displayed charges before
+creating the service. No paid resource is created merely by committing this file.
 
-| Name | Value to enter privately |
+Manual alternative: New Cron Job, this repository's `main` branch, Docker,
+`./Dockerfile`, command `python render_runner.py`, schedule `5 10,11 * * *`.
+
+## Site verification still required
+
+The observed site notice allows check-in from 5 a.m. to 6 p.m., without stating
+a timezone. Confirm the program uses America/Chicago before enabling this
+proposed 5:05 a.m. schedule. The remaining login steps and result page have not
+yet been inspected. Never guess selectors or result phrases.
+
+During the site's permitted hours, inspect the authorized login flow and fill
+`site_config.example.json` with the exact observed selectors, today's date format
+(including a four-digit year), and distinct complete yes/no status phrases.
+Scope `result_selector` narrowly to the result card; it must not contain login
+inputs or unrelated records. `status_selector` and `date_selector` are relative
+to that card. Only add verified continuation buttons, without automatically
+accepting agreements or bypassing verification challenges.
+
+Then configure these private Render variables:
+
+| Variable | Purpose |
 |---|---|
-| `ALERTS_ENABLED` | `false` until validation is complete; then `true` |
-| `MYCALLIN_PHONE` | Program's Drug Testing Phone Number |
+| `MYCALLIN_PHONE` | Program's drug-testing phone number |
 | `MYCALLIN_LAST_NAME` | Account last name |
 | `MYCALLIN_ID` | Account ID |
-| `MYCALLIN_CONFIG_JSON` | Completed contents of `site_config.example.json` |
-| `WA_ACCESS_TOKEN` | Meta token authorized for the WhatsApp sender |
-| `WA_PHONE_NUMBER_ID` | Meta sender phone-number ID, not your receiving number |
-| `WA_API_VERSION` | Supported Graph API version selected in the Meta app |
-| `WA_TO` | Your receiving WhatsApp number with country code, digits only |
+| `MYCALLIN_CONFIG_JSON` | Verified JSON configuration |
+| `ALERTS_ENABLED` | Keep `false` until validation is complete |
 
-Use Meta's WhatsApp Business Cloud API. A personal WhatsApp number alone is not
-an API sender. A Twilio account would require a different sending implementation.
-Never paste access tokens into chat, repository files, logs, or screenshots.
+Validate with `python render_runner.py --check-setup --dry-run`. For a live site
+check without email, explicitly set `ALERTS_ENABLED=true` for the command and run
+`python render_runner.py --now --dry-run`. Review the result screenshot privately
+and confirm classification before enabling scheduled runs. For a full manual
+check and email, use `--now` without `--dry-run` after setup is verified.
 
-## Finish the site adapter during access hours
+## Scheduling and failure behavior
 
-Inspect the real page with Playwright Inspector or developer tools. Fill in CSS
-selectors for the three login fields and Next button. Add only verified
-continuation buttons to `continuation_selectors`; do not guess later steps,
-auto-accept agreements, or bypass verification challenges.
+Render uses UTC. The cron expression starts at 10:05 and 11:05 UTC; the script
+only checks during 05:05-05:20 America/Chicago, so exactly one candidate is
+eligible in either standard or daylight time. Delays beyond this window are
+skipped and require manual checking. The cloud job can run while your PC is off.
 
-`result_selector` must identify just the current result card. `status_selector`
-and `date_selector` are relative to that card. The card must not contain login
-fields or unrelated history. `date_format` must parse the entire displayed date
-and include `%Y`. If the website does not expose a date, adapt and validate this
-logic before enabling it; do not remove freshness checks just to get a result.
-Enter exact observed complete sentences in `yes_phrases` and `no_phrases`.
-Both cases need verification. Set `verified=true` only after this is complete.
+Unknown wording, stale dates, ambiguity, closed pages, and login/network failures
+never become `NO TEST TODAY`. Failed checks email an explicit unknown status
+with a labelled failure image; they exit nonzero. Invalid configuration or mail
+failures also exit nonzero, but cannot guarantee an email is sent. The screenshot
+is attached only after the configured result card is found.
 
-TLS certificate errors must be fixed at their source. Verification remains on.
-The current adapter only handles form fields and verified continuation clicks;
-if later steps need other actions, code changes will be necessary.
+Render cron files are ephemeral: the local duplicate record is best effort,
+not durable across runs/deploys. There are no automatic send retries because
+SMTP timeouts can have ambiguous delivery outcomes. Manual re-runs may duplicate
+an email. Configure Render failure notifications and maintain a separate manual
+check until end-to-end execution and delivery have been verified.
 
-## Configure WhatsApp
+## Local verification
 
-Provision a Meta WhatsApp Business sender and authorize the receiving number.
-Create an approved template named `mycallin_daily`, language `en_US`, with an
-IMAGE header and exactly three numbered body variables. Suggested body:
+`python -m unittest discover -s tests -v`
 
-> MyCallIn check for {{1}}: {{2}}. Checked at {{3}}. Review the attached image.
-> If status is unknown, check MyCallIn manually.
-
-Submit synthetic example data, not personal records, for approval. Approval is
-subject to Meta's requirements and is not guaranteed. Daily unattended messages
-outside the customer-service window require an approved template. The script
-uploads the image directly to Meta and sends the template using its media ID.
-
-Results are `TEST REQUIRED TODAY`, `NO TEST TODAY`, or
-`STATUS UNKNOWN - check MyCallIn manually`. If no result screenshot is possible,
-the attachment is an explicitly labeled failure notice, not a site screenshot.
-
-## Validate before enabling daily alerts
-
-Run these checks locally with Python 3.11+:
-
-```sh
-python -m pip install -r requirements.txt
-python -m playwright install chromium
-python -m unittest discover -s tests -v
-python render_runner.py --check-setup
-```
-
-After securely configuring the variables and setting `ALERTS_ENABLED=true`,
-use `python render_runner.py --now --dry-run` during site access hours. Inspect
-the image locally. Then use `python render_runner.py --now` for one live send
-and verify the image and text on the receiving phone. `--now` bypasses only this
-script's time gate, never the website's restrictions.
-
-API acceptance is not delivery. Add Meta delivery-status webhooks/monitoring
-before relying on this unattended. A broken WhatsApp sender cannot deliver its
-own failure warning. Failed runs exit nonzero; unknown site status exits 2 even
-if its warning is accepted by WhatsApp. Render run logs omit personal status.
-
-Render cron disks are ephemeral. Local duplicate suppression only works while
-the state file survives; manual reruns, platform restarts, or retries can send
-duplicates. The default schedule makes one eligible attempt daily. There are no
-automatic send retries after ambiguous network failures. Do not configure
-automatic retries without durable deduplication and delivery tracking.
-
-## Sources
-
-- https://render.com/docs/cronjobs
-- https://playwright.dev/python/docs/docker
-- https://playwright.dev/python/docs/screenshots
-- https://www.twilio.com/docs/whatsapp/key-concepts
-- https://www.postman.com/meta/whatsapp-business-platform/folder/13382743-ecb27be5-4d27-4763-bbee-6a8002c04bf3
-- https://www.postman.com/meta/whatsapp-business-platform/request/lwtlz1k/send-message-template-interactive
+Tests cover status negation, date freshness, ambiguous status, DST scheduling,
+disabled behavior, email attachment content, and rejecting malformed addresses.
+Live site access, Docker build, SMTP authentication, and inbox delivery remain
+unverified. Setup tests never claim to be a real test result.

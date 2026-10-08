@@ -6,7 +6,7 @@ import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from mycallin_alert import run
+from mycallin_alert import email_settings, run, test_email
 
 
 def in_window(now):
@@ -29,7 +29,7 @@ def load_config(dry_run=False):
     if cfg.get("timezone") != "America/Chicago":
         raise ValueError("This schedule requires America/Chicago; confirm site timezone first")
     for key in ("submit_selector", "result_selector", "status_selector", "date_selector",
-                "date_format", "template", "language"):
+                "date_format"):
         if not isinstance(cfg.get(key), str) or not cfg[key].strip():
             raise ValueError("Configure " + key)
     if "%Y" not in cfg["date_format"]:
@@ -52,9 +52,9 @@ def load_config(dry_run=False):
             raise ValueError("Each login step needs a selector and environment variable name")
         required.append(step["env"])
     if not dry_run:
-        required += ["WA_ACCESS_TOKEN", "WA_PHONE_NUMBER_ID", "WA_API_VERSION", "WA_TO"]
+        email_settings()
     if any(not os.environ.get(name, "").strip() for name in required):
-        raise ValueError("Login or WhatsApp environment variables are missing")
+        raise ValueError("Login environment variables are missing")
     return cfg
 
 
@@ -63,10 +63,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--check-setup", action="store_true", help="Validate setup without network calls")
     parser.add_argument("--now", action="store_true", help="Manual run bypassing the scheduled window")
-    parser.add_argument("--dry-run", action="store_true", help="Website check only; no WhatsApp upload")
+    parser.add_argument("--dry-run", action="store_true", help="Website check only; no email")
+    parser.add_argument("--test-email", action="store_true", help="Send a labelled setup email without checking MyCallIn; independent of ALERTS_ENABLED")
     args = parser.parse_args()
+    if args.test_email:
+        return test_email()
     if not args.check_setup and os.environ.get("ALERTS_ENABLED", "false").lower() != "true":
-        print("DISABLED: no website check or WhatsApp message performed.")
+        print("DISABLED: no website check or email performed.")
         return 0
     if not args.now and not args.check_setup and not in_window(datetime.now(ZoneInfo("UTC"))):
         print("SKIPPED: outside 05:05-05:20 America/Chicago. No check performed.")
