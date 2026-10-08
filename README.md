@@ -4,7 +4,41 @@ Checks MyCallIn, captures its result card, and emails a PNG attachment with
 `TEST REQUIRED TODAY`, `NO TEST TODAY`, or `STATUS UNKNOWN` in the subject.
 **Not live or fully configured.** The site adapter still needs verification.
 Personal credentials, email addresses, IDs, tokens, and screenshots must stay
-out of this public repository. Store real values in Render Environment settings.
+out of this public repository. Store real values in GitHub Actions secrets (or Render Environment settings for the optional paid deployment).
+
+## Free GitHub Actions deployment (preferred)
+
+`.github/workflows/daily-email.yml` uses standard GitHub-hosted Linux runners.
+These are free for public repositories. No paid Render resource is required.
+Keep the repository public to retain that pricing. This workflow does not save
+screenshots as public artifacts, use paid runners, or upload caches.
+
+In repository Settings > Secrets and variables > Actions, create these repository
+secrets: `SMTP_USERNAME`, `SMTP_PASSWORD`, `EMAIL_TO`, `MYCALLIN_PHONE`,
+`MYCALLIN_LAST_NAME`, `MYCALLIN_ID`, and (after site verification)
+`MYCALLIN_CONFIG_JSON`. The first three are sufficient for an email setup test.
+
+Under Actions > MyCallIn daily email > Run workflow, select `test-email` to send
+only a labelled setup image. Select `dry-run` for an in-hours website check with
+no message, or `check-now` for a full check after verification. Dry-run screenshots
+are intentionally deleted without upload; inspect the result privately using a
+local authorized session when validating the site adapter.
+
+Create the repository **variable** `ALERTS_ENABLED=true` only after live site and
+email delivery validation. Until then scheduled email jobs are skipped. Pushes
+run credential-free unit tests only, not website checks or emails.
+
+The proposed schedule is 05:05 America/Chicago, using GitHub's timezone-aware
+schedule support. Confirm the MyCallIn program timezone before enabling.
+GitHub schedules can be delayed or dropped; the runner permits delayed checks
+only during 05:00-18:00 Central and uses the current date for classification.
+Public-repository schedules disable after 60 days without repository activity.
+This is not a guaranteed exact-time alert or a replacement for required check-in.
+
+Official references:
+- https://docs.github.com/en/actions/concepts/billing-and-usage
+- https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows
+- https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets
 
 ## Email sender setup
 
@@ -15,11 +49,11 @@ It needs no Meta account, WhatsApp sender, or message template.
 2. Enable Google 2-Step Verification, then create an app password named
    `MyCallIn Alerts` at https://myaccount.google.com/apppasswords . Some account
    policies do not permit app passwords; do not use your normal Gmail password.
-3. Enter the following privately in the Render deployment form or Environment:
+3. Enter the following privately as GitHub Actions repository secrets:
    - `SMTP_USERNAME`: full sending Gmail address.
    - `SMTP_PASSWORD`: the 16-character app password (spaces are removed).
    - `EMAIL_TO`: the single receiving email address.
-4. Run `python render_runner.py --test-email` in a manual Render shell to send
+4. Select `test-email` in the GitHub manual workflow (or run `python render_runner.py --test-email`) to send
    a clearly labelled test image. This deliberately works with alerts disabled
    and does not open MyCallIn. Check both inbox and spam for receipt.
 
@@ -28,7 +62,7 @@ changing your Google password also revokes app passwords. Do not paste passwords
 into chat, screenshots, logs, or GitHub. A Gmail connection inside ChatGPT does
 not by itself provide credentials to the unattended Python process on Render.
 
-## Render deployment
+## Optional paid Render deployment (not required for GitHub Actions)
 
 The repository includes `render.yaml` for a Docker cron service. Start setup:
 https://dashboard.render.com/select-repo?type=blueprint
@@ -58,7 +92,7 @@ inputs or unrelated records. `status_selector` and `date_selector` are relative
 to that card. Only add verified continuation buttons, without automatically
 accepting agreements or bypassing verification challenges.
 
-Then configure these private Render variables:
+Then configure these private GitHub Actions secrets (or optional Render variables):
 
 | Variable | Purpose |
 |---|---|
