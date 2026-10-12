@@ -327,7 +327,8 @@ def check_once(state_path: Path, interval: int, dry_run=False):
         now = datetime.now(UTC)
         document = fetch_document(state, state_path, now, interval)
         if document is None:
-            LOG.info('source backoff active')
+            LOG.info('source backoff active; next request at %s',
+                     datetime.fromtimestamp(state['next_fetch_at'], UTC).isoformat())
             return
         reports = parse_reports(document, datetime.now(UTC))
         LOG.info('public source checked; qualifying reports=%d', len(reports))
