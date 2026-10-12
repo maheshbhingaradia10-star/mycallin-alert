@@ -376,7 +376,11 @@ def main():
         try:
             check_once(args.state, args.interval, args.dry_run)
         except Exception as error:
-            LOG.error('check failed (%s); no availability claim made', type(error).__name__)
+            if isinstance(error, SourceError):
+                # SourceError contains only our fixed diagnostic strings/status codes.
+                LOG.error('source check failed: %s; no availability claim made', error)
+            else:
+                LOG.error('check failed (%s); no availability claim made', type(error).__name__)
             if not args.loop:
                 return 1
         if not args.loop:
