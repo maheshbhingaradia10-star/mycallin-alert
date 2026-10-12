@@ -1,0 +1,94 @@
+name: Hyderabad H-1B VAC alerts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'visa-monitor/**'
+      - '.github/workflows/visa-vac-alert.yml'
+  schedule:
+    - cron: '2/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Operation
+        required: true
+        default: monitor
+        type: choice
+        options: [monitor, test-email, check-now, dry-run]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s visa-monitor -p 'test_*.py' -v
+
+  setup-email:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'test-email'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Send clearly labelled setup email
+        env:
+          SMTP_USERNAME: ${{ secrets.VISA_EMAIL_TO }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_TO: ${{ secrets.VISA_EMAIL_TO }}
+        run: python visa-monitor/visa_watch.py --test-email --state /tmp/visa-test-state.json
+
+  watch:
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode != 'test-email')
+    runs-on: ubuntu-latest
+    timeout-minutes: 28
+    concurrency:
+      group: hyderabad-vac-monitor
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Restore report deduplication
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: state/visa-watch.json
+          key: visa-watch-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: visa-watch-v1-
+      - name: Check public reports every two minutes
+        env:
+          RUN_MODE: ${{ inputs.mode || 'monitor' }}
+          PYTHONUNBUFFERED: '1'
+          SMTP_USERNAME: ${{ secrets.VISA_EMAIL_TO }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_TO: ${{ secrets.VISA_EMAIL_TO }}
+        run: |
+          case "$RUN_MODE" in
+            monitor) python visa-monitor/visa_watch.py --loop --interval 120 --duration 1440 --state state/visa-watch.json ;;
+            check-now) python visa-monitor/visa_watch.py --once --state state/visa-watch.json ;;
+            dry-run) python visa-monitor/visa_watch.py --once --dry-run --state state/visa-watch.json ;;
+            *) exit 1 ;;
+          esac
+      - name: Save report deduplication
+        if: always()
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: state/visa-watch.json
+          key: visa-watch-v1-${{ github.run_id }}-${{ github.run_attempt }}
